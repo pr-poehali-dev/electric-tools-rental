@@ -1,18 +1,34 @@
 
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { ShoppingCart, Menu, X } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ShoppingCart, Menu, X, User, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
+import { useAuth } from '@/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { totalItems } = useCart();
+  const { isAuthenticated, isAdmin, logout, user } = useAuth();
 
   const isActive = (path: string) => {
     return location.pathname === path;
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
   };
 
   return (
@@ -63,7 +79,38 @@ const Header = () => {
                 )}
               </Button>
             </Link>
-            <Button variant="secondary">Войти</Button>
+            
+            {isAuthenticated ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="text-white hover:bg-primary/80 flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    {user?.name}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Мой аккаунт</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {isAdmin && (
+                    <DropdownMenuItem onClick={() => navigate('/admin/dashboard')}>
+                      Админ-панель
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={handleLogout}>
+                    Выйти
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button 
+                variant="secondary"
+                onClick={() => navigate('/admin/login')}
+                className="flex items-center gap-2"
+              >
+                <LogIn className="h-4 w-4" />
+                Войти
+              </Button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -120,9 +167,41 @@ const Header = () => {
             >
               Контакты
             </Link>
-            <div className="pt-2">
-              <Button variant="secondary" className="w-full">Войти</Button>
-            </div>
+            
+            {isAuthenticated ? (
+              <>
+                {isAdmin && (
+                  <Link 
+                    to="/admin/dashboard" 
+                    className="block px-3 py-2 hover:bg-primary/80 rounded transition"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Админ-панель
+                  </Link>
+                )}
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => {
+                    handleLogout();
+                    setIsMenuOpen(false);
+                  }}
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Выйти
+                </Button>
+              </>
+            ) : (
+              <Link 
+                to="/admin/login" 
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <Button variant="secondary" className="w-full">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Войти
+                </Button>
+              </Link>
+            )}
           </div>
         )}
       </div>

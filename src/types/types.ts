@@ -12,3 +12,11 @@ export interface Tool {
 export interface CartItem extends Tool {
   quantity: number;
 }
+
+export interface User {
+  id: number;
+  email: string;
+  password: string;
+  role: 'admin' | 'user';
+  name: string;
+}
