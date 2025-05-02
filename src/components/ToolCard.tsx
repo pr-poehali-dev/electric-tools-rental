@@ -4,6 +4,7 @@ import { Tool } from '@/types/types';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart, Plus, Check } from 'lucide-react';
 import { useState } from 'react';
+import { useCart } from '@/context/CartContext';
 
 interface ToolCardProps {
   tool: Tool;
@@ -11,9 +12,10 @@ interface ToolCardProps {
 
 const ToolCard = ({ tool }: ToolCardProps) => {
   const [isAdded, setIsAdded] = useState(false);
+  const { addToCart } = useCart();
 
   const handleAddToCart = () => {
-    // Здесь будет логика добавления в корзину
+    addToCart(tool, 1);
     setIsAdded(true);
     setTimeout(() => setIsAdded(false), 2000);
   };

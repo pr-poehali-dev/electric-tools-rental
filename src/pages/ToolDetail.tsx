@@ -8,12 +8,12 @@ import { Button } from '@/components/ui/button';
 import { ShoppingCart, ChevronLeft, Plus, Minus, Calendar, Truck, Shield, Phone } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { useToast } from "@/components/ui/use-toast";
+import { useCart } from '@/context/CartContext';
 
 const ToolDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [isAdded, setIsAdded] = useState(false);
   
@@ -44,13 +44,8 @@ const ToolDetail = () => {
   };
   
   const handleAddToCart = () => {
-    // В реальном приложении здесь будет логика добавления в корзину
+    addToCart(tool, quantity);
     setIsAdded(true);
-    
-    toast({
-      title: "Добавлено в корзину",
-      description: `${tool.name} × ${quantity}`,
-    });
     
     setTimeout(() => {
       setIsAdded(false);
