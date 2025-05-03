@@ -8,10 +8,13 @@ import {
   Users, 
   ShoppingCart, 
   Settings, 
-  LogOut, 
+  LogOut,
   Menu, 
   X,
-  Calendar
+  Calendar,
+  Activity,
+  Clock,
+  Home
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +26,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { systemApi } from '@/lib/api';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -30,6 +35,9 @@ interface AdminLayoutProps {
 
 const AdminLayout = ({ children }: AdminLayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [lastActivity, setLastActivity] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -41,12 +49,37 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
     }
   }, [isAdmin, navigate]);
   
+  // Загрузка последней активности
+  useEffect(() => {
+    const fetchLastActivity = async () => {
+      try {
+        const activity = await systemApi.getActivity(1);
+        if (activity.length > 0) {
+          setLastActivity(activity[0].details);
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Не удалось загрузить данные активности';
+        setError(errorMessage);
+      }
+    };
+    
+    fetchLastActivity();
+    
+    // Обновление данных каждую минуту
+    const intervalId = setInterval(fetchLastActivity, 60000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
+  
   const navigationItems = [
     { name: 'Дашборд', path: '/admin/dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
     { name: 'Управление инструментами', path: '/admin/tools', icon: <Package className="h-5 w-5" /> },
     { name: 'Управление пользователями', path: '/admin/users', icon: <Users className="h-5 w-5" /> },
     { name: 'Управление заказами', path: '/admin/orders', icon: <ShoppingCart className="h-5 w-5" /> },
     { name: 'Управление бронированиями', path: '/admin/bookings', icon: <Calendar className="h-5 w-5" /> },
+    { name: 'Управление услугами', path: '/admin/services', icon: <Clock className="h-5 w-5" /> },
+    { name: 'Мониторинг API', path: '/admin/api-logs', icon: <Activity className="h-5 w-5" /> },
+    { name: 'Настройки', path: '/admin/settings', icon: <Settings className="h-5 w-5" /> }
   ];
   
   const toggleSidebar = () => {
@@ -82,12 +115,20 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
           </div>
           
           <div className="flex items-center space-x-4">
+            {lastActivity && (
+              <div className="hidden md:flex items-center text-sm text-gray-500">
+                <span className="mr-2">Последнее действие:</span>
+                <span className="truncate max-w-[200px]">{lastActivity}</span>
+              </div>
+            )}
+            
             <Button 
               variant="outline" 
               size="sm" 
               onClick={() => navigate('/')}
-              className="hidden md:flex"
+              className="hidden md:flex items-center gap-2"
             >
+              <Home className="h-4 w-4" />
               На сайт
             </Button>
             
@@ -106,9 +147,11 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
                 <DropdownMenuLabel>{user?.name}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate('/')}>
+                  <Home className="mr-2 h-4 w-4" />
                   На сайт
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/profile')}>
+                  <Users className="mr-2 h-4 w-4" />
                   Личный кабинет
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -143,7 +186,7 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
               <div className="clear-both"></div>
             </div>
             
-            <nav className="flex-1 px-2 space-y-1">
+            <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
               {navigationItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 
@@ -196,6 +239,11 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
         
         {/* Основной контент */}
         <main className="flex-1 ml-0 md:ml-64 transition-all duration-300">
+          {error && (
+            <Alert variant="destructive" className="m-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
           {children}
         </main>
       </div>
