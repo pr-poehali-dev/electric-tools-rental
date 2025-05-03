@@ -1,11 +1,10 @@
 
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingCart, Menu, X, User, LogIn } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useCart } from '@/context/CartContext';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Badge } from '@/components/ui/badge';
+import { useCart } from '@/context/CartContext';
+import { Button } from '@/components/ui/button';
+import { ShoppingCart, Menu, X, User, LogIn, Calendar } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,89 +12,111 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 
 const Header = () => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
   const { totalItems } = useCart();
-  const { isAuthenticated, isAdmin, logout, user } = useAuth();
-
-  const isActive = (path: string) => {
-    return location.pathname === path;
+  const navigate = useNavigate();
+  
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
   };
-
+  
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+  
   const handleLogout = () => {
     logout();
     navigate('/');
   };
-
+  
+  const navigationItems = [
+    { name: 'Главная', path: '/' },
+    { name: 'Каталог', path: '/catalog' },
+    { name: 'Услуги', path: '/services' },
+    { name: 'О нас', path: '/about' },
+    { name: 'Контакты', path: '/contacts' },
+  ];
+  
   return (
-    <header className="bg-primary text-white shadow-md">
-      <div className="container mx-auto px-4 py-3">
-        <div className="flex justify-between items-center">
-          <Link to="/" className="flex items-center gap-2">
-            <img src="/public/logo-b.svg" alt="ЭлектроПрокат" className="h-10 w-10" />
-            <span className="text-xl font-bold">ЭлектроПрокат</span>
-          </Link>
-
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-6">
-            <Link 
-              to="/" 
-              className={`hover:text-gray-200 transition ${isActive('/') ? 'font-semibold' : ''}`}
-            >
-              Главная
-            </Link>
-            <Link 
-              to="/catalog" 
-              className={`hover:text-gray-200 transition ${isActive('/catalog') ? 'font-semibold' : ''}`}
-            >
-              Каталог
-            </Link>
-            <Link 
-              to="/about" 
-              className={`hover:text-gray-200 transition ${isActive('/about') ? 'font-semibold' : ''}`}
-            >
-              О нас
-            </Link>
-            <Link 
-              to="/contacts" 
-              className={`hover:text-gray-200 transition ${isActive('/contacts') ? 'font-semibold' : ''}`}
-            >
-              Контакты
-            </Link>
+    <header className="bg-white shadow sticky top-0 z-50">
+      <div className="container mx-auto px-4">
+        <div className="flex items-center justify-between h-16">
+          {/* Логотип */}
+          <div className="flex-shrink-0">
+            <Link to="/" className="text-xl font-bold text-primary">ИнструментПро</Link>
+          </div>
+          
+          {/* Навигация для десктопа */}
+          <nav className="hidden md:flex space-x-6">
+            {navigationItems.map((item) => (
+              <Link 
+                key={item.path} 
+                to={item.path}
+                className="text-gray-700 hover:text-primary transition-colors duration-200"
+              >
+                {item.name}
+              </Link>
+            ))}
           </nav>
-
-          <div className="hidden md:flex items-center space-x-4">
-            <Link to="/cart" className="relative">
-              <Button variant="ghost" size="icon" className="text-white hover:bg-primary/80">
-                <ShoppingCart className="h-6 w-6" />
+          
+          {/* Правая часть панели навигации */}
+          <div className="flex items-center space-x-2">
+            {/* Корзина */}
+            <Link to="/cart">
+              <Button variant="ghost" size="icon" className="relative">
+                <ShoppingCart className="h-5 w-5" />
                 {totalItems > 0 && (
-                  <Badge variant="destructive" className="absolute -top-2 -right-2 px-1.5 py-0.5 min-w-[1.5rem] flex items-center justify-center">
+                  <Badge 
+                    className="absolute -top-1 -right-1 px-1.5 py-0.5 min-w-[1.25rem] h-5 flex items-center justify-center" 
+                    variant="destructive"
+                  >
                     {totalItems}
                   </Badge>
                 )}
               </Button>
             </Link>
             
+            {/* Бронирования (для аутентифицированных пользователей) */}
+            {isAuthenticated && (
+              <Link to="/profile?tab=bookings">
+                <Button variant="ghost" size="icon">
+                  <Calendar className="h-5 w-5" />
+                </Button>
+              </Link>
+            )}
+            
+            {/* Профиль пользователя */}
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="text-white hover:bg-primary/80 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    {user?.name}
+                  <Button variant="ghost" size="icon" className="rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user?.avatar} alt={user?.name} />
+                      <AvatarFallback className="text-xs bg-primary text-primary-foreground">
+                        {user?.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Мой аккаунт</DropdownMenuLabel>
+                  <DropdownMenuLabel>{user?.name}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/profile')}>
+                    <User className="mr-2 h-4 w-4" />
+                    Личный кабинет
+                  </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem onClick={() => navigate('/admin/dashboard')}>
                       Админ-панель
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>
                     Выйти
                   </DropdownMenuItem>
@@ -103,108 +124,97 @@ const Header = () => {
               </DropdownMenu>
             ) : (
               <Button 
-                variant="secondary"
-                onClick={() => navigate('/admin/login')}
-                className="flex items-center gap-2"
+                variant="ghost" 
+                size="icon"
+                onClick={() => navigate('/login')}
               >
-                <LogIn className="h-4 w-4" />
-                Войти
+                <LogIn className="h-5 w-5" />
               </Button>
             )}
-          </div>
-
-          {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center">
-            <Link to="/cart" className="mr-3 relative">
-              <Button variant="ghost" size="icon" className="text-white hover:bg-primary/80">
-                <ShoppingCart className="h-6 w-6" />
-                {totalItems > 0 && (
-                  <Badge variant="destructive" className="absolute -top-2 -right-2 px-1.5 py-0.5 min-w-[1.5rem] flex items-center justify-center">
-                    {totalItems}
-                  </Badge>
-                )}
-              </Button>
-            </Link>
+            
+            {/* Кнопка мобильного меню */}
             <Button 
               variant="ghost" 
               size="icon" 
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-white hover:bg-primary/80"
+              className="md:hidden"
+              onClick={toggleMobileMenu}
             >
-              {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              <Menu className="h-6 w-6" />
             </Button>
           </div>
         </div>
-
-        {/* Mobile Navigation */}
-        {isMenuOpen && (
-          <div className="md:hidden pt-4 pb-3 space-y-3">
-            <Link 
-              to="/" 
-              className={`block px-3 py-2 hover:bg-primary/80 rounded transition ${isActive('/') ? 'font-semibold' : ''}`}
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Главная
-            </Link>
-            <Link 
-              to="/catalog" 
-              className={`block px-3 py-2 hover:bg-primary/80 rounded transition ${isActive('/catalog') ? 'font-semibold' : ''}`}
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Каталог
-            </Link>
-            <Link 
-              to="/about" 
-              className={`block px-3 py-2 hover:bg-primary/80 rounded transition ${isActive('/about') ? 'font-semibold' : ''}`}
-              onClick={() => setIsMenuOpen(false)}
-            >
-              О нас
-            </Link>
-            <Link 
-              to="/contacts" 
-              className={`block px-3 py-2 hover:bg-primary/80 rounded transition ${isActive('/contacts') ? 'font-semibold' : ''}`}
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Контакты
-            </Link>
+      </div>
+      
+      {/* Мобильное меню */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-50">
+          <div className="bg-white h-full w-4/5 max-w-xs p-5 shadow-xl">
+            <div className="flex justify-between items-center mb-6">
+              <Link to="/" className="text-xl font-bold text-primary" onClick={closeMobileMenu}>
+                ИнструментПро
+              </Link>
+              <Button variant="ghost" size="icon" onClick={closeMobileMenu}>
+                <X className="h-6 w-6" />
+              </Button>
+            </div>
             
-            {isAuthenticated ? (
-              <>
-                {isAdmin && (
+            <nav className="space-y-4">
+              {navigationItems.map((item) => (
+                <Link 
+                  key={item.path} 
+                  to={item.path}
+                  className="block py-2 text-gray-700 hover:text-primary transition-colors duration-200"
+                  onClick={closeMobileMenu}
+                >
+                  {item.name}
+                </Link>
+              ))}
+              
+              <div className="pt-4 border-t">
+                {isAuthenticated ? (
+                  <>
+                    <Link 
+                      to="/profile"
+                      className="flex items-center py-2 text-gray-700 hover:text-primary"
+                      onClick={closeMobileMenu}
+                    >
+                      <User className="mr-2 h-4 w-4" />
+                      Личный кабинет
+                    </Link>
+                    {isAdmin && (
+                      <Link 
+                        to="/admin/dashboard"
+                        className="flex items-center py-2 text-gray-700 hover:text-primary"
+                        onClick={closeMobileMenu}
+                      >
+                        Админ-панель
+                      </Link>
+                    )}
+                    <button 
+                      className="flex items-center py-2 text-gray-700 hover:text-primary w-full text-left"
+                      onClick={() => {
+                        handleLogout();
+                        closeMobileMenu();
+                      }}
+                    >
+                      Выйти
+                    </button>
+                  </>
+                ) : (
                   <Link 
-                    to="/admin/dashboard" 
-                    className="block px-3 py-2 hover:bg-primary/80 rounded transition"
-                    onClick={() => setIsMenuOpen(false)}
+                    to="/login"
+                    className="flex items-center py-2 text-gray-700 hover:text-primary"
+                    onClick={closeMobileMenu}
                   >
-                    Админ-панель
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Войти / Зарегистрироваться
                   </Link>
                 )}
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start"
-                  onClick={() => {
-                    handleLogout();
-                    setIsMenuOpen(false);
-                  }}
-                >
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Выйти
-                </Button>
-              </>
-            ) : (
-              <Link 
-                to="/admin/login" 
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <Button variant="secondary" className="w-full">
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Войти
-                </Button>
-              </Link>
-            )}
+              </div>
+            </nav>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </header>
   );
 };
