@@ -1,115 +1,138 @@
 
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useCart } from '@/context/CartContext';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { useCart } from '@/context/CartContext';
 import CartItem from '@/components/CartItem';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, ChevronLeft, ChevronRight, Trash2, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { ShoppingCart, ArrowRight, CreditCard, Truck, Store, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { ordersApi } from '@/lib/api';
 
 const Cart = () => {
-  const { cartItems, clearCart, totalItems, totalPrice } = useCart();
+  const { cartItems, totalPrice, clearCart } = useCart();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [orderPlaced, setOrderPlaced] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Состояние формы заказа
   const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
+    customer: '',
     email: '',
+    phone: '',
+    delivery: 'pickup', // 'pickup' или 'delivery'
     address: '',
     comment: '',
-    deliveryDate: '',
-    rentDays: '1'
+    days: 1, // Количество дней аренды
   });
   
+  // При изменении какого-либо поля формы
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
-  const handlePlaceOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // В реальном приложении здесь была бы отправка заказа на сервер
-    
-    // Имитация успешного заказа
-    setOrderPlaced(true);
-    
-    toast({
-      title: "Заказ успешно оформлен!",
-      description: "Мы свяжемся с вами в ближайшее время для подтверждения",
-    });
-    
-    // Очистка корзины
-    setTimeout(() => {
-      clearCart();
-      navigate('/');
-    }, 3000);
+  // При изменении способа доставки
+  const handleDeliveryChange = (value: string) => {
+    setFormData(prev => ({ ...prev, delivery: value }));
   };
   
-  // Расчет итоговой стоимости аренды
-  const rentDays = parseInt(formData.rentDays) || 1;
-  const subtotal = totalPrice * rentDays;
-  const deliveryFee = 300; // Фиксированная стоимость доставки
-  const total = subtotal + deliveryFee;
+  // Стоимость доставки
+  const deliveryCost = formData.delivery === 'delivery' ? 300 : 0;
   
-  if (orderPlaced) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header />
-        <main className="flex-grow bg-gray-50 py-12">
-          <div className="container mx-auto px-4 max-w-2xl">
-            <div className="bg-white rounded-lg shadow p-8 text-center">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Check className="h-10 w-10 text-green-600" />
-              </div>
-              <h2 className="text-2xl font-bold mb-4">Заказ успешно оформлен!</h2>
-              <p className="text-gray-600 mb-6">
-                Спасибо за ваш заказ. Наш менеджер свяжется с вами в ближайшее время 
-                для подтверждения деталей заказа и уточнения времени доставки.
-              </p>
-              <Button onClick={() => navigate('/')}>
-                Вернуться на главную
-              </Button>
-            </div>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
+  // Общая стоимость заказа
+  const totalOrderPrice = (totalPrice * formData.days) + deliveryCost;
+  
+  // Отправка заказа
+  const handleSubmitOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (cartItems.length === 0) {
+      toast({
+        title: "Корзина пуста",
+        description: "Добавьте товары в корзину перед оформлением заказа",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Подготавливаем данные для заказа
+      const orderData = {
+        customer: formData.customer,
+        email: formData.email,
+        phone: formData.phone,
+        delivery: formData.delivery === 'pickup' ? 'Самовывоз' : 'Доставка',
+        address: formData.address,
+        comment: formData.comment,
+        total: totalOrderPrice,
+        items: cartItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          days: parseInt(formData.days.toString())
+        }))
+      };
+      
+      // Отправляем заказ
+      const order = await ordersApi.create(orderData);
+      
+      // Очищаем корзину
+      clearCart();
+      
+      // Показываем сообщение об успехе
+      toast({
+        title: "Заказ успешно оформлен",
+        description: `Номер вашего заказа: #${order.id}`,
+      });
+      
+      // Перенаправляем на главную
+      navigate('/');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Произошла ошибка при оформлении заказа';
+      
+      toast({
+        title: "Ошибка",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
       
-      <main className="flex-grow bg-gray-50 py-8">
-        <div className="container mx-auto px-4">
-          <h1 className="text-2xl md:text-3xl font-bold mb-8">Корзина</h1>
+      <main className="flex-grow bg-gray-50">
+        <div className="container mx-auto px-4 py-8">
+          <h1 className="text-3xl font-bold mb-8">Корзина</h1>
           
-          {cartItems.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Товары в корзине */}
-              <div className="lg:col-span-2">
-                <div className="bg-white rounded-lg shadow overflow-hidden mb-4">
-                  <div className="flex justify-between items-center p-4 border-b">
-                    <h2 className="text-lg font-medium">Товары ({totalItems})</h2>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="text-gray-500 hover:text-red-500"
-                      onClick={clearCart}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Очистить корзину
-                    </Button>
+          {cartItems.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-8 text-center">
+              <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <h2 className="text-2xl font-semibold mb-2">Ваша корзина пуста</h2>
+              <p className="text-gray-600 mb-6">Добавьте инструменты в корзину, чтобы оформить заказ</p>
+              <Button onClick={() => navigate('/catalog')}>
+                Перейти в каталог
+              </Button>
+            </div>
+          ) : (
+            <div className="lg:flex gap-8">
+              {/* Список товаров в корзине */}
+              <div className="lg:w-2/3">
+                <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
+                  <div className="p-4 border-b">
+                    <h2 className="text-lg font-semibold">Товары в корзине</h2>
                   </div>
                   
                   <div className="divide-y">
@@ -117,160 +140,187 @@ const Cart = () => {
                       <CartItem key={item.id} item={item} />
                     ))}
                   </div>
+                  
+                  <div className="p-4 bg-gray-50">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Сумма за день:</span>
+                      <span className="font-semibold">{totalPrice} ₽</span>
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="flex justify-between mt-6">
-                  <Link to="/catalog">
-                    <Button variant="outline" className="flex items-center">
-                      <ChevronLeft className="h-4 w-4 mr-2" />
-                      Продолжить покупки
-                    </Button>
-                  </Link>
+                {/* Количество дней аренды */}
+                <div className="bg-white rounded-lg shadow p-4 mb-6">
+                  <Label htmlFor="days" className="font-medium">Количество дней аренды:</Label>
+                  <div className="flex items-center mt-2">
+                    <Input
+                      id="days"
+                      name="days"
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={formData.days}
+                      onChange={handleInputChange}
+                      className="w-24"
+                    />
+                    <div className="ml-4 text-sm text-gray-600">
+                      {formData.days >= 3 && formData.days < 7 && (
+                        <span className="text-primary">Скидка 10% при аренде от 3 дней!</span>
+                      )}
+                      {formData.days >= 7 && formData.days < 14 && (
+                        <span className="text-primary">Скидка 15% при аренде от 7 дней!</span>
+                      )}
+                      {formData.days >= 14 && (
+                        <span className="text-primary">Скидка 20% при аренде от 14 дней!</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Способ доставки */}
+                <div className="bg-white rounded-lg shadow p-4 mb-6">
+                  <Label className="font-medium mb-3 block">Способ получения:</Label>
+                  <RadioGroup value={formData.delivery} onValueChange={handleDeliveryChange}>
+                    <div className="flex items-start space-x-2 mb-3">
+                      <RadioGroupItem value="pickup" id="pickup" />
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="pickup" className="font-medium flex items-center">
+                          <Store className="h-4 w-4 mr-2" />
+                          Самовывоз
+                        </Label>
+                        <p className="text-sm text-gray-500">
+                          Бесплатно. Пункт выдачи: г. Москва, ул. Строителей, д. 10
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <RadioGroupItem value="delivery" id="delivery" />
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="delivery" className="font-medium flex items-center">
+                          <Truck className="h-4 w-4 mr-2" />
+                          Доставка курьером
+                        </Label>
+                        <p className="text-sm text-gray-500">
+                          300 ₽. Доставка в пределах города в день заказа при оформлении до 12:00
+                        </p>
+                      </div>
+                    </div>
+                  </RadioGroup>
+                  
+                  {formData.delivery === 'delivery' && (
+                    <div className="mt-4">
+                      <Label htmlFor="address">Адрес доставки:</Label>
+                      <Textarea
+                        id="address"
+                        name="address"
+                        placeholder="Укажите полный адрес доставки"
+                        value={formData.address}
+                        onChange={handleInputChange}
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
               
               {/* Форма оформления заказа */}
-              <div className="lg:col-span-1">
-                <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
-                  <div className="p-4 border-b">
-                    <h2 className="text-lg font-medium">Оформление заказа</h2>
-                  </div>
+              <div className="lg:w-1/3">
+                <div className="bg-white rounded-lg shadow p-6 sticky top-4">
+                  <h2 className="text-lg font-semibold mb-4">Оформление заказа</h2>
                   
-                  <form onSubmit={handlePlaceOrder} className="p-4 space-y-4">
-                    <div>
-                      <Label htmlFor="name">ФИО</Label>
-                      <Input
-                        id="name"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleInputChange}
-                        placeholder="Иванов Иван Иванович"
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="phone">Телефон</Label>
-                      <Input
-                        id="phone"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        placeholder="+7 (999) 123-45-67"
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        placeholder="example@mail.ru"
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="address">Адрес доставки</Label>
-                      <Input
-                        id="address"
-                        name="address"
-                        value={formData.address}
-                        onChange={handleInputChange}
-                        placeholder="г. Москва, ул. Примерная, д. 1, кв. 1"
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="deliveryDate">Дата доставки</Label>
-                      <Input
-                        id="deliveryDate"
-                        name="deliveryDate"
-                        type="date"
-                        value={formData.deliveryDate}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="rentDays">Срок аренды (дней)</Label>
-                      <Input
-                        id="rentDays"
-                        name="rentDays"
-                        type="number"
-                        min="1"
-                        max="30"
-                        value={formData.rentDays}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="comment">Комментарий к заказу</Label>
-                      <Textarea
-                        id="comment"
-                        name="comment"
-                        value={formData.comment}
-                        onChange={handleInputChange}
-                        placeholder="Дополнительная информация по заказу..."
-                        rows={3}
-                      />
+                  <form onSubmit={handleSubmitOrder}>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="customer">ФИО:</Label>
+                        <Input
+                          id="customer"
+                          name="customer"
+                          placeholder="Иванов Иван Иванович"
+                          value={formData.customer}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="email">Email:</Label>
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          placeholder="example@mail.ru"
+                          value={formData.email}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="phone">Телефон:</Label>
+                        <Input
+                          id="phone"
+                          name="phone"
+                          placeholder="+7 (999) 123-45-67"
+                          value={formData.phone}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="comment">Комментарий к заказу:</Label>
+                        <Textarea
+                          id="comment"
+                          name="comment"
+                          placeholder="Дополнительная информация по заказу"
+                          value={formData.comment}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      
+                      {/* Итоговая сумма */}
+                      <div className="pt-4 border-t">
+                        <div className="flex justify-between mb-2">
+                          <span className="text-gray-600">Сумма за аренду:</span>
+                          <span>{totalPrice} ₽ × {formData.days} {formData.days === 1 ? 'день' : formData.days < 5 ? 'дня' : 'дней'}</span>
+                        </div>
+                        {deliveryCost > 0 && (
+                          <div className="flex justify-between mb-2">
+                            <span className="text-gray-600">Доставка:</span>
+                            <span>{deliveryCost} ₽</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-lg font-bold mt-2">
+                          <span>Итого:</span>
+                          <span>{totalOrderPrice} ₽</span>
+                        </div>
+                      </div>
+                      
+                      <Button 
+                        type="submit" 
+                        className="w-full"
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Оформление...
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="mr-2 h-4 w-4" />
+                            Оформить заказ
+                          </>
+                        )}
+                      </Button>
+                      
+                      <p className="text-xs text-gray-500 mt-2">
+                        Нажимая на кнопку "Оформить заказ", вы соглашаетесь с условиями аренды и даете согласие на обработку персональных данных.
+                      </p>
                     </div>
                   </form>
                 </div>
-                
-                {/* Сводка заказа */}
-                <div className="bg-white rounded-lg shadow overflow-hidden">
-                  <div className="p-4 border-b">
-                    <h2 className="text-lg font-medium">Итого</h2>
-                  </div>
-                  
-                  <div className="p-4 space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Подытог за {rentDays} {rentDays === 1 ? 'день' : rentDays < 5 ? 'дня' : 'дней'}</span>
-                      <span>{subtotal} ₽</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Доставка</span>
-                      <span>{deliveryFee} ₽</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between font-medium text-lg">
-                      <span>Итого</span>
-                      <span>{total} ₽</span>
-                    </div>
-                    
-                    <Button 
-                      type="submit"
-                      className="w-full mt-4 flex items-center justify-center"
-                      onClick={handlePlaceOrder}
-                    >
-                      Оформить заказ
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
               </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow p-8 text-center">
-              <div className="flex justify-center mb-4">
-                <ShoppingCart className="h-16 w-16 text-gray-300" />
-              </div>
-              <h2 className="text-xl font-medium mb-2">Ваша корзина пуста</h2>
-              <p className="text-gray-500 mb-6">
-                Похоже, вы еще не добавили товары в корзину
-              </p>
-              <Link to="/catalog">
-                <Button>Перейти в каталог</Button>
-              </Link>
             </div>
           )}
         </div>

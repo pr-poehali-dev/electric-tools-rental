@@ -1,22 +1,21 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Tool, CartItem } from '@/types/types';
-import { useToast } from '@/components/ui/use-toast';
+import { CartItem } from '@/types/types';
 
 interface CartContextProps {
   cartItems: CartItem[];
-  addToCart: (tool: Tool, quantity?: number) => void;
+  addToCart: (item: CartItem) => void;
   removeFromCart: (id: number) => void;
   updateQuantity: (id: number, quantity: number) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
+  isInCart: (id: number) => boolean;
 }
 
 const CartContext = createContext<CartContextProps | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const { toast } = useToast();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   
   // Загрузка корзины из localStorage при инициализации
@@ -25,59 +24,48 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (storedCart) {
       try {
         setCartItems(JSON.parse(storedCart));
-      } catch (error) {
-        console.error('Failed to parse stored cart:', error);
+      } catch (e) {
+        console.error('Failed to parse stored cart:', e);
+        localStorage.removeItem('cart');
       }
     }
   }, []);
-
+  
   // Сохранение корзины в localStorage при изменении
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(cartItems));
   }, [cartItems]);
   
   // Добавление товара в корзину
-  const addToCart = (tool: Tool, quantity: number = 1) => {
+  const addToCart = (item: CartItem) => {
     setCartItems(prevItems => {
-      const existingItem = prevItems.find(item => item.id === tool.id);
+      // Проверяем, есть ли уже такой товар в корзине
+      const existingItemIndex = prevItems.findIndex(i => i.id === item.id);
       
-      if (existingItem) {
-        // Обновляем количество, если товар уже в корзине
-        return prevItems.map(item => 
-          item.id === tool.id 
-            ? { ...item, quantity: item.quantity + quantity } 
-            : item
-        );
+      if (existingItemIndex !== -1) {
+        // Если товар уже в корзине, обновляем количество
+        const updatedItems = [...prevItems];
+        updatedItems[existingItemIndex] = {
+          ...updatedItems[existingItemIndex],
+          quantity: updatedItems[existingItemIndex].quantity + item.quantity
+        };
+        return updatedItems;
       } else {
-        // Добавляем новый товар
-        return [...prevItems, { ...tool, quantity }];
+        // Если товара нет в корзине, добавляем его
+        return [...prevItems, item];
       }
-    });
-    
-    toast({
-      title: "Товар добавлен в корзину",
-      description: `${tool.name} (${quantity} шт.)`,
     });
   };
   
   // Удаление товара из корзины
   const removeFromCart = (id: number) => {
     setCartItems(prevItems => prevItems.filter(item => item.id !== id));
-    
-    toast({
-      title: "Товар удален из корзины",
-    });
   };
   
   // Обновление количества товара
   const updateQuantity = (id: number, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(id);
-      return;
-    }
-    
-    setCartItems(prevItems => 
-      prevItems.map(item => 
+    setCartItems(prevItems =>
+      prevItems.map(item =>
         item.id === id ? { ...item, quantity } : item
       )
     );
@@ -86,28 +74,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Очистка корзины
   const clearCart = () => {
     setCartItems([]);
-    
-    toast({
-      title: "Корзина очищена",
-    });
   };
   
-  // Рассчет общего количества товаров
-  const totalItems = cartItems.reduce((total, item) => total + item.quantity, 0);
+  // Общее количество товаров в корзине
+  const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   
-  // Рассчет общей стоимости
-  const totalPrice = cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+  // Общая стоимость товаров в корзине
+  const totalPrice = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  
+  // Проверка наличия товара в корзине
+  const isInCart = (id: number) => cartItems.some(item => item.id === id);
   
   return (
-    <CartContext.Provider value={{
-      cartItems,
-      addToCart,
-      removeFromCart,
-      updateQuantity,
-      clearCart,
-      totalItems,
-      totalPrice
-    }}>
+    <CartContext.Provider
+      value={{
+        cartItems,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        clearCart,
+        totalItems,
+        totalPrice,
+        isInCart
+      }}
+    >
       {children}
     </CartContext.Provider>
   );

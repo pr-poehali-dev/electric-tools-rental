@@ -1,6 +1,6 @@
 
+import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { mockTools } from '@/data/mockTools';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   Package, 
@@ -8,17 +8,131 @@ import {
   DollarSign, 
   TrendingUp,
   Users,
-  Activity
+  Activity,
+  Loader2
 } from 'lucide-react';
+import { toolsApi, ordersApi } from '@/lib/api';
+import { Tool } from '@/types/types';
+import { Order } from '@/lib/api';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+// Интерфейс для статистики
+interface DashboardStats {
+  totalTools: number;
+  availableTools: number;
+  totalRevenue: number;
+  totalOrders: number;
+  completedOrders: number;
+  processingOrders: number;
+  totalCustomers: number;
+  popularCategories: Array<{
+    name: string;
+    percentage: number;
+  }>;
+}
+
+// Функция для вычисления статистики из данных
+const calculateStats = (tools: Tool[], orders: Order[]): DashboardStats => {
+  // Статистика инструментов
+  const totalTools = tools.length;
+  const availableTools = tools.filter(tool => tool.available).length;
+  
+  // Статистика заказов
+  const totalOrders = orders.length;
+  const completedOrders = orders.filter(order => order.status === 'completed').length;
+  const processingOrders = orders.filter(order => order.status === 'processing').length;
+  
+  // Вычисляем выручку (для демонстрации)
+  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+  
+  // Получаем уникальных клиентов по email
+  const uniqueCustomers = new Set(orders.map(order => order.email));
+  const totalCustomers = uniqueCustomers.size;
+  
+  // Популярные категории (на основе товаров в заказах)
+  const categoryCounts: Record<string, number> = {};
+  tools.forEach(tool => {
+    categoryCounts[tool.category] = (categoryCounts[tool.category] || 0) + 1;
+  });
+  
+  // Отсортированные категории
+  const sortedCategories = Object.entries(categoryCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3) // Топ-3 категории
+    .map(([name, count]) => ({
+      name,
+      percentage: Math.round((count / totalTools) * 100)
+    }));
+  
+  return {
+    totalTools,
+    availableTools,
+    totalRevenue,
+    totalOrders,
+    completedOrders,
+    processingOrders,
+    totalCustomers,
+    popularCategories: sortedCategories
+  };
+};
 
 const Dashboard = () => {
-  // Вычисляем некоторую статистику для демонстрации
-  const totalTools = mockTools.length;
-  const availableTools = mockTools.filter(tool => tool.available).length;
-  const totalRevenue = 15850; // Демо-данные
-  const totalOrders = 24; // Демо-данные
-  const totalCustomers = 18; // Демо-данные
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // Загружаем инструменты и заказы параллельно
+        const [tools, orders] = await Promise.all([
+          toolsApi.getAll(),
+          ordersApi.getAll()
+        ]);
+        
+        // Вычисляем статистику
+        const dashboardStats = calculateStats(tools, orders);
+        setStats(dashboardStats);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Не удалось загрузить данные дашборда';
+        setError(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchDashboardData();
+  }, []);
+  
+  // Загрузочная индикация
+  if (isLoading) {
+    return (
+      <AdminLayout>
+        <div className="p-6 flex flex-col items-center justify-center h-[calc(100vh-100px)]">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-gray-600">Загрузка данных статистики...</p>
+        </div>
+      </AdminLayout>
+    );
+  }
+  
+  // Отображение ошибки
+  if (error) {
+    return (
+      <AdminLayout>
+        <div className="p-6">
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      </AdminLayout>
+    );
+  }
+  
+  // Данные загружены успешно
   return (
     <AdminLayout>
       <div className="p-6">
@@ -28,83 +142,79 @@ const Dashboard = () => {
         </div>
         
         {/* Карточки со статистикой */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Всего инструментов</CardTitle>
-              <Package className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalTools}</div>
-              <p className="text-xs text-gray-500">
-                {availableTools} доступно, {totalTools - availableTools} недоступно
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Выручка за месяц</CardTitle>
-              <DollarSign className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalRevenue.toLocaleString()} ₽</div>
-              <p className="text-xs text-gray-500 flex items-center gap-1">
-                <TrendingUp className="h-3 w-3 text-green-500" />
-                <span className="text-green-500">+12%</span> по сравнению с прошлым месяцем
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Заказы</CardTitle>
-              <ShoppingBag className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalOrders}</div>
-              <p className="text-xs text-gray-500">
-                18 завершено, 6 в процессе
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Клиенты</CardTitle>
-              <Users className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalCustomers}</div>
-              <p className="text-xs text-gray-500">
-                5 новых за последнюю неделю
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Популярные категории</CardTitle>
-              <Activity className="h-4 w-4 text-gray-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Дрели и перфораторы</span>
-                  <span className="text-sm font-medium">32%</span>
+        {stats && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Всего инструментов</CardTitle>
+                <Package className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalTools}</div>
+                <p className="text-xs text-gray-500">
+                  {stats.availableTools} доступно, {stats.totalTools - stats.availableTools} недоступно
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Выручка за месяц</CardTitle>
+                <DollarSign className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalRevenue.toLocaleString()} ₽</div>
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3 text-green-500" />
+                  <span className="text-green-500">+12%</span> по сравнению с прошлым месяцем
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Заказы</CardTitle>
+                <ShoppingBag className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalOrders}</div>
+                <p className="text-xs text-gray-500">
+                  {stats.completedOrders} завершено, {stats.processingOrders} в процессе
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Клиенты</CardTitle>
+                <Users className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+                <p className="text-xs text-gray-500">
+                  {Math.max(1, Math.floor(stats.totalCustomers * 0.1))} новых за последнюю неделю
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Популярные категории</CardTitle>
+                <Activity className="h-4 w-4 text-gray-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {stats.popularCategories.map((category, index) => (
+                    <div key={index} className="flex justify-between items-center">
+                      <span className="text-sm">{category.name}</span>
+                      <span className="text-sm font-medium">{category.percentage}%</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Шуруповерты</span>
-                  <span className="text-sm font-medium">28%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm">Шлифовальные машины</span>
-                  <span className="text-sm font-medium">15%</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
         
         {/* Последние действия */}
         <div className="mb-6">

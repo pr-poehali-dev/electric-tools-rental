@@ -1,5 +1,6 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { authApi } from '@/lib/api';
 import { User } from '@/types/types';
 
 interface AuthContextProps {
@@ -8,21 +9,16 @@ interface AuthContextProps {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  isLoading: boolean;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
-// Демо пользователь для тестирования (в реальном приложении это было бы в базе данных)
-const demoUser: User = {
-  id: 1,
-  email: 'admin@example.com',
-  password: 'admin123', // в реальном приложении храним хеш, а не сам пароль
-  role: 'admin',
-  name: 'Администратор',
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Проверяем наличие сохраненной сессии при загрузке
   useEffect(() => {
@@ -44,21 +40,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // Функция входа
   const login = async (email: string, password: string): Promise<boolean> => {
-    // В реальном приложении здесь был бы запрос к API
+    setIsLoading(true);
+    setError(null);
     
-    // Проверяем демо-данные
-    if (email === demoUser.email && password === demoUser.password) {
-      // Не храним пароль в состоянии
-      const { password: _, ...userWithoutPassword } = demoUser;
-      setUser(userWithoutPassword as User);
+    try {
+      const response = await authApi.login(email, password);
       
-      // Сохраняем пользователя в localStorage
-      localStorage.setItem('auth_user', JSON.stringify(userWithoutPassword));
-      
-      return true;
+      if (response.success && response.user) {
+        setUser(response.user as User);
+        
+        // Сохраняем пользователя в localStorage
+        localStorage.setItem('auth_user', JSON.stringify(response.user));
+        
+        return true;
+      } else {
+        setError(response.message || 'Ошибка авторизации');
+        return false;
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Произошла ошибка';
+      setError(errorMessage);
+      return false;
+    } finally {
+      setIsLoading(false);
     }
-    
-    return false;
   };
   
   // Функция выхода
@@ -73,7 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       isAuthenticated,
       login,
-      logout
+      logout,
+      isLoading,
+      error
     }}>
       {children}
     </AuthContext.Provider>

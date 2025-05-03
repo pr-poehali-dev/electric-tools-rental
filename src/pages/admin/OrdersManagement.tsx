@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { 
   Table, 
@@ -14,10 +15,10 @@ import {
   CheckCircle2, 
   Clock, 
   XCircle,
-  Search
+  Search,
+  Loader2
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { useState } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -35,15 +36,14 @@ import {
 import { 
   Card, 
   CardContent, 
-  CardDescription, 
   CardHeader, 
   CardTitle 
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/components/ui/use-toast';
+import { ordersApi, Order } from '@/lib/api';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
-// Демо-данные для заказов
+// Примеры заказов для инициализации
 const mockOrders = [
   {
     id: 12345,
@@ -76,38 +76,26 @@ const mockOrders = [
     address: 'г. Москва, ул. Примерная, д. 1, кв. 1',
     comment: ''
   },
-  {
-    id: 12347,
-    customer: 'Александр Иванов',
-    email: 'alex@example.com',
-    phone: '+7 (999) 345-67-89',
-    date: '2023-05-25',
-    total: 900,
-    status: 'pending',
-    items: [
-      { id: 5, name: 'Генератор HONDA EU20i', quantity: 1, price: 1500, days: 1 },
-    ],
-    delivery: 'Доставка',
-    address: 'г. Москва, ул. Ленина, д. 10, кв. 5',
-    comment: 'Доставить в выходной день'
-  },
-  {
-    id: 12348,
-    customer: 'Ольга Смирнова',
-    email: 'olga@example.com',
-    phone: '+7 (999) 456-78-90',
-    date: '2023-05-30',
-    total: 3600,
-    status: 'cancelled',
-    items: [
-      { id: 6, name: 'Сварочный аппарат ESAB Rebel EMP 215ic', quantity: 1, price: 1200, days: 3 },
-    ],
-    delivery: 'Самовывоз',
-    address: '',
-    comment: 'Отменено клиентом'
-  },
 ];
 
+// Инициализация демо заказов в localStorage
+const initializeDemoOrders = async () => {
+  try {
+    const orders = await ordersApi.getAll();
+    if (orders.length === 0) {
+      // Добавляем демо заказы только если их нет
+      mockOrders.forEach(async (order) => {
+        const { id, date, status, ...orderData } = order;
+        // @ts-ignore - игнорируем несоответствие типов для демо-данных
+        await ordersApi.create(orderData);
+      });
+    }
+  } catch (error) {
+    console.error('Ошибка при инициализации демо заказов:', error);
+  }
+};
+
+// Статусы заказов
 const statusData = {
   pending: { label: 'Ожидает оплаты', color: 'bg-yellow-500', icon: Clock },
   processing: { label: 'В обработке', color: 'bg-blue-500', icon: Clock },
@@ -116,11 +104,40 @@ const statusData = {
 };
 
 const OrdersManagement = () => {
-  const [orders, setOrders] = useState(mockOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewOrderDialog, setViewOrderDialog] = useState(false);
-  const [currentOrder, setCurrentOrder] = useState<any>(null);
+  const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   const { toast } = useToast();
+  
+  // Инициализация и загрузка заказов
+  useEffect(() => {
+    const loadOrders = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // Инициализируем демо заказы
+        await initializeDemoOrders();
+        
+        // Загружаем заказы
+        const data = await ordersApi.getAll();
+        setOrders(data);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Не удалось загрузить заказы';
+        setError(errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadOrders();
+  }, []);
   
   // Поиск по заказам
   const filteredOrders = orders.filter(order => 
@@ -131,28 +148,43 @@ const OrdersManagement = () => {
   );
   
   // Открыть диалог просмотра заказа
-  const openViewDialog = (order: any) => {
+  const openViewDialog = (order: Order) => {
     setCurrentOrder(order);
     setViewOrderDialog(true);
   };
   
   // Обновить статус заказа
-  const updateOrderStatus = (status: string) => {
+  const updateOrderStatus = async (status: Order['status']) => {
     if (!currentOrder) return;
     
-    const updatedOrders = orders.map(order => 
-      order.id === currentOrder.id ? { ...order, status } : order
-    );
+    setIsSubmitting(true);
     
-    setOrders(updatedOrders);
-    setCurrentOrder({ ...currentOrder, status });
-    
-    const statusText = statusData[status as keyof typeof statusData].label.toLowerCase();
-    
-    toast({
-      title: "Статус заказа обновлен",
-      description: `Заказ #${currentOrder.id} теперь ${statusText}`,
-    });
+    try {
+      const updatedOrder = await ordersApi.updateStatus(currentOrder.id, status);
+      
+      // Обновляем локальное состояние
+      setOrders(orders.map(order => 
+        order.id === currentOrder.id ? updatedOrder : order
+      ));
+      
+      setCurrentOrder(updatedOrder);
+      
+      const statusText = statusData[status].label.toLowerCase();
+      
+      toast({
+        title: "Статус заказа обновлен",
+        description: `Заказ #${currentOrder.id} теперь ${statusText}`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось обновить статус заказа';
+      toast({
+        title: "Ошибка",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   return (
@@ -176,62 +208,76 @@ const OrdersManagement = () => {
           </div>
         </div>
         
+        {/* Ошибка загрузки */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        
         {/* Таблица заказов */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>№ заказа</TableHead>
-                <TableHead>Клиент</TableHead>
-                <TableHead>Дата</TableHead>
-                <TableHead className="text-right">Сумма (₽)</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead className="text-right">Действия</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders.length > 0 ? (
-                filteredOrders.map((order) => {
-                  const statusInfo = statusData[order.status as keyof typeof statusData];
-                  const StatusIcon = statusInfo.icon;
-                  
-                  return (
-                    <TableRow key={order.id}>
-                      <TableCell className="font-medium">#{order.id}</TableCell>
-                      <TableCell>
-                        <div>{order.customer}</div>
-                        <div className="text-xs text-gray-500">{order.email}</div>
-                      </TableCell>
-                      <TableCell>{order.date}</TableCell>
-                      <TableCell className="text-right">{order.total}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <div className={`w-2 h-2 rounded-full ${statusInfo.color} mr-2`}></div>
-                          {statusInfo.label}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => openViewDialog(order)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              ) : (
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-3 text-gray-600">Загрузка заказов...</span>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                    Заказы не найдены
-                  </TableCell>
+                  <TableHead>№ заказа</TableHead>
+                  <TableHead>Клиент</TableHead>
+                  <TableHead>Дата</TableHead>
+                  <TableHead className="text-right">Сумма (₽)</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead className="text-right">Действия</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredOrders.length > 0 ? (
+                  filteredOrders.map((order) => {
+                    const statusInfo = statusData[order.status];
+                    const StatusIcon = statusInfo.icon;
+                    
+                    return (
+                      <TableRow key={order.id}>
+                        <TableCell className="font-medium">#{order.id}</TableCell>
+                        <TableCell>
+                          <div>{order.customer}</div>
+                          <div className="text-xs text-gray-500">{order.email}</div>
+                        </TableCell>
+                        <TableCell>{order.date}</TableCell>
+                        <TableCell className="text-right">{order.total}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center">
+                            <div className={`w-2 h-2 rounded-full ${statusInfo.color} mr-2`}></div>
+                            {statusInfo.label}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => openViewDialog(order)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      {searchQuery ? 'Заказы не найдены' : 'Список заказов пуст'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </div>
         
         {/* Диалог просмотра заказа */}
@@ -279,11 +325,11 @@ const OrdersManagement = () => {
                     <div className="flex items-center gap-2">
                       <div 
                         className={`h-3 w-3 rounded-full ${
-                          statusData[currentOrder.status as keyof typeof statusData].color
+                          statusData[currentOrder.status].color
                         }`} 
                       />
                       <span className="font-medium">
-                        {statusData[currentOrder.status as keyof typeof statusData].label}
+                        {statusData[currentOrder.status].label}
                       </span>
                     </div>
                     
@@ -292,6 +338,7 @@ const OrdersManagement = () => {
                       <Select 
                         value={currentOrder.status} 
                         onValueChange={updateOrderStatus}
+                        disabled={isSubmitting}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -303,6 +350,13 @@ const OrdersManagement = () => {
                           <SelectItem value="cancelled">Отменен</SelectItem>
                         </SelectContent>
                       </Select>
+                      
+                      {isSubmitting && (
+                        <div className="flex items-center justify-center mt-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary mr-2" />
+                          <span className="text-sm text-gray-500">Обновление...</span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -323,7 +377,7 @@ const OrdersManagement = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {currentOrder.items.map((item: any) => (
+                        {currentOrder.items.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell>{item.name}</TableCell>
                             <TableCell className="text-center">{item.quantity}</TableCell>

@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -12,11 +12,17 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [localError, setLocalError] = useState('');
   
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, isLoading, error } = useAuth();
   const navigate = useNavigate();
+  
+  // При изменении глобальной ошибки обновляем локальную
+  useEffect(() => {
+    if (error) {
+      setLocalError(error);
+    }
+  }, [error]);
   
   // Если пользователь уже авторизован, перенаправляем в админ-панель
   if (isAuthenticated) {
@@ -25,22 +31,17 @@ const Login = () => {
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError('');
+    setLocalError('');
     
     try {
       const success = await login(email, password);
       
       if (success) {
         navigate('/admin/dashboard');
-      } else {
-        setError('Неверный email или пароль');
       }
     } catch (err) {
-      setError('Произошла ошибка при входе');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
+      const errorMessage = err instanceof Error ? err.message : 'Произошла ошибка при входе';
+      setLocalError(errorMessage);
     }
   };
   
@@ -56,10 +57,10 @@ const Login = () => {
         
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
-            {error && (
+            {localError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>{localError}</AlertDescription>
               </Alert>
             )}
             

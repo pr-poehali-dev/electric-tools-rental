@@ -1,7 +1,7 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { mockTools, toolCategories } from '@/data/mockTools';
+import { toolCategories } from '@/data/mockTools';
 import { Tool } from '@/types/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,17 +10,16 @@ import {
   Edit, 
   Trash2, 
   Search,
-  Eye,
   Check,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { 
   Dialog, 
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogFooter,
-  DialogTrigger 
+  DialogFooter
 } from '@/components/ui/dialog';
 import { 
   Table, 
@@ -41,13 +40,15 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
-
-// В реальном приложении это была бы часть API-интерфейса
-let toolsData = [...mockTools];
+import { toolsApi } from '@/lib/api';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const ToolsManagement = () => {
-  const [tools, setTools] = useState<Tool[]>(toolsData);
+  const [tools, setTools] = useState<Tool[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -63,7 +64,30 @@ const ToolsManagement = () => {
     available: true
   });
   
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
   const { toast } = useToast();
+  
+  // Загрузка инструментов при монтировании компонента
+  useEffect(() => {
+    fetchTools();
+  }, []);
+  
+  // Получение списка инструментов
+  const fetchTools = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const data = await toolsApi.getAll();
+      setTools(data);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось загрузить инструменты';
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Поиск по инструментам
   const filteredTools = tools.filter(tool => 
@@ -107,64 +131,104 @@ const ToolsManagement = () => {
   };
   
   // Добавить инструмент
-  const handleAddTool = () => {
-    const newTool: Tool = {
-      id: tools.length > 0 ? Math.max(...tools.map(t => t.id)) + 1 : 1,
-      name: formData.name || '',
-      description: formData.description || '',
-      price: formData.price || 0,
-      image: formData.image || '',
-      category: formData.category || toolCategories[0],
-      available: formData.available ?? true
-    };
+  const handleAddTool = async () => {
+    setIsSubmitting(true);
     
-    const updatedTools = [...tools, newTool];
-    setTools(updatedTools);
-    toolsData = updatedTools;
-    
-    setIsAddDialogOpen(false);
-    
-    toast({
-      title: "Инструмент добавлен",
-      description: `${newTool.name} успешно добавлен в каталог`,
-    });
+    try {
+      const newTool = await toolsApi.create({
+        name: formData.name || '',
+        description: formData.description || '',
+        price: formData.price || 0,
+        image: formData.image || '',
+        category: formData.category || toolCategories[0],
+        available: formData.available ?? true
+      });
+      
+      setTools([...tools, newTool]);
+      setIsAddDialogOpen(false);
+      
+      toast({
+        title: "Инструмент добавлен",
+        description: `${newTool.name} успешно добавлен в каталог`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось добавить инструмент';
+      toast({
+        title: "Ошибка",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   // Редактировать инструмент
-  const handleEditTool = () => {
+  const handleEditTool = async () => {
     if (!currentTool) return;
     
-    const updatedTools = tools.map(tool => 
-      tool.id === currentTool.id 
-        ? { ...tool, ...formData } 
-        : tool
-    );
+    setIsSubmitting(true);
     
-    setTools(updatedTools);
-    toolsData = updatedTools;
-    
-    setIsEditDialogOpen(false);
-    
-    toast({
-      title: "Инструмент обновлен",
-      description: `${formData.name} успешно обновлен`,
-    });
+    try {
+      const updatedTool = await toolsApi.update(currentTool.id, formData);
+      
+      setTools(tools.map(tool => 
+        tool.id === currentTool.id ? updatedTool : tool
+      ));
+      
+      setIsEditDialogOpen(false);
+      
+      toast({
+        title: "Инструмент обновлен",
+        description: `${updatedTool.name} успешно обновлен`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось обновить инструмент';
+      toast({
+        title: "Ошибка",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   // Удалить инструмент
-  const handleDeleteTool = () => {
+  const handleDeleteTool = async () => {
     if (!currentTool) return;
     
-    const updatedTools = tools.filter(tool => tool.id !== currentTool.id);
-    setTools(updatedTools);
-    toolsData = updatedTools;
+    setIsSubmitting(true);
     
-    setIsDeleteDialogOpen(false);
-    
-    toast({
-      title: "Инструмент удален",
-      description: `${currentTool.name} успешно удален из каталога`,
-    });
+    try {
+      const success = await toolsApi.delete(currentTool.id);
+      
+      if (success) {
+        setTools(tools.filter(tool => tool.id !== currentTool.id));
+        
+        toast({
+          title: "Инструмент удален",
+          description: `${currentTool.name} успешно удален из каталога`,
+        });
+      } else {
+        toast({
+          title: "Ошибка",
+          description: "Инструмент не найден или уже удален",
+          variant: "destructive"
+        });
+      }
+      
+      setIsDeleteDialogOpen(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось удалить инструмент';
+      toast({
+        title: "Ошибка",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   return (
@@ -194,65 +258,79 @@ const ToolsManagement = () => {
           </div>
         </div>
         
+        {/* Ошибка загрузки */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        
         {/* Таблица инструментов */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">ID</TableHead>
-                <TableHead>Название</TableHead>
-                <TableHead>Категория</TableHead>
-                <TableHead className="text-right">Цена (₽/день)</TableHead>
-                <TableHead className="text-center">Доступность</TableHead>
-                <TableHead className="w-36 text-right">Действия</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTools.length > 0 ? (
-                filteredTools.map((tool) => (
-                  <TableRow key={tool.id}>
-                    <TableCell className="font-medium">{tool.id}</TableCell>
-                    <TableCell>{tool.name}</TableCell>
-                    <TableCell>{tool.category}</TableCell>
-                    <TableCell className="text-right">{tool.price}</TableCell>
-                    <TableCell className="text-center">
-                      {tool.available ? (
-                        <Check className="h-5 w-5 text-green-500 mx-auto" />
-                      ) : (
-                        <X className="h-5 w-5 text-red-500 mx-auto" />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => openEditDialog(tool)}
-                          className="h-8 w-8 text-gray-600"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => openDeleteDialog(tool)}
-                          className="h-8 w-8 text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-3 text-gray-600">Загрузка инструментов...</span>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">ID</TableHead>
+                  <TableHead>Название</TableHead>
+                  <TableHead>Категория</TableHead>
+                  <TableHead className="text-right">Цена (₽/день)</TableHead>
+                  <TableHead className="text-center">Доступность</TableHead>
+                  <TableHead className="w-36 text-right">Действия</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTools.length > 0 ? (
+                  filteredTools.map((tool) => (
+                    <TableRow key={tool.id}>
+                      <TableCell className="font-medium">{tool.id}</TableCell>
+                      <TableCell>{tool.name}</TableCell>
+                      <TableCell>{tool.category}</TableCell>
+                      <TableCell className="text-right">{tool.price}</TableCell>
+                      <TableCell className="text-center">
+                        {tool.available ? (
+                          <Check className="h-5 w-5 text-green-500 mx-auto" />
+                        ) : (
+                          <X className="h-5 w-5 text-red-500 mx-auto" />
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => openEditDialog(tool)}
+                            className="h-8 w-8 text-gray-600"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => openDeleteDialog(tool)}
+                            className="h-8 w-8 text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      {searchQuery ? 'Инструменты не найдены' : 'Список инструментов пуст'}
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                    Инструменты не найдены
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </div>
         
         {/* Диалоговое окно добавления инструмента */}
@@ -347,10 +425,26 @@ const ToolsManagement = () => {
             </div>
             
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsAddDialogOpen(false)}
+                disabled={isSubmitting}
+              >
                 Отмена
               </Button>
-              <Button onClick={handleAddTool}>Добавить</Button>
+              <Button 
+                onClick={handleAddTool}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Добавление...
+                  </>
+                ) : (
+                  'Добавить'
+                )}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -444,10 +538,26 @@ const ToolsManagement = () => {
             </div>
             
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsEditDialogOpen(false)}
+                disabled={isSubmitting}
+              >
                 Отмена
               </Button>
-              <Button onClick={handleEditTool}>Сохранить</Button>
+              <Button 
+                onClick={handleEditTool}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Сохранение...
+                  </>
+                ) : (
+                  'Сохранить'
+                )}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -469,11 +579,26 @@ const ToolsManagement = () => {
             </div>
             
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsDeleteDialogOpen(false)}
+                disabled={isSubmitting}
+              >
                 Отмена
               </Button>
-              <Button variant="destructive" onClick={handleDeleteTool}>
-                Удалить
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteTool}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Удаление...
+                  </>
+                ) : (
+                  'Удалить'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
